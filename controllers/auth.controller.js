@@ -8,10 +8,10 @@ const sendEmail = require('../utils/sendEmail');
 
 
 const register = asyncHandler(async (req, res) => {
-    const { name, email, password } = req.body;
+    const { name, email, password, phoneNumber } = req.body;
 
     if(!name || !email || !password) {
-        res.status(400).json({
+        return res.status(400).json({
             success: false,
             message: 'Please provide name, email, and password are required'
         });
@@ -22,12 +22,14 @@ const register = asyncHandler(async (req, res) => {
     });
 
     if(existingUser) {
-        res.status(400).json({
+        return res.status(400).json({
             success: false,
             message: 'User with this email or phone number already exists'
         });
     }
 
+    // OTP من 6 أرقام (الحد الأعلى 1000000 لأن randomInt مش بيشمله)
+    const otp = crypto.randomInt(100000, 1000000).toString();
     const hashedotp =crypto.createHash('sha256').update(otp).digest('hex');
 
     const user = await User.create({
@@ -39,24 +41,24 @@ const register = asyncHandler(async (req, res) => {
         verficationOTPExpire: Date.now() + 10 * 60 * 1000 // OTP expires in 10 minutes
     });
 
-    await sendEmail({
-        email:user.email,
-        subject:"Verify Your Email",
-        html:`<h2>Welcome ${user.name}</h2>
-
-            <p>
-                Your email verification code is:
-            </p>
-
-            <h1 style="letter-spacing: 5px;">
-                ${otp}
-            </h1>
-
-            <p>
-                This OTP will expire in 10 minutes.
-            </p>
-        `
-    });
+    try {
+        await sendEmail({
+            email: user.email,
+            subject: "Verify Your Email",
+            html: `
+                <h2>Welcome ${user.name}</h2>
+                <p>Your email verification code is:</p>
+                <h1 style="letter-spacing: 5px;">${otp}</h1>
+                <p>This OTP will expire in 10 minutes.</p>
+            `
+        });
+    } catch (error) {
+        await User.findByIdAndDelete(user._id); // نمسح اليوزر عشان يقدر يسجل تاني
+        return res.status(500).json({
+            success: false,
+            message: "Could not send verification email, please try again"
+        });
+    }
     return res.status(201).json({
         success: true,
         message: "Registration successful. OTP sent to your email."
@@ -119,63 +121,68 @@ const login = asyncHandler(async (req,res)=> {
 
 });
 
-const forgetPassword = asyncHandler(async (req,res) => {
-    const {email} = req.body;
+const forgetPassword = asyncHandler(async (req, res) => {
+    const { email } = req.body;
 
-    if(!email){
+    if (!email) {
         return res.status(400).json({
-            success:false,
-            message:"Email is Required"
+            success: false,
+            message: "Email is required"
         });
     }
 
     const user = await User.findOne({
         email,
-        isDeleted:false,
+        isDeleted: false
     });
 
-    if(!user){
-        return res.status(404).json({
-            success:false,
-            message:"No User Found With This Email"
+    // نفس الرد سواء الإيميل موجود أو لأ، عشان محدش يعرف مين مسجّل عندك
+    if (!user) {
+        return res.status(200).json({
+            success: true,
+            message: "If this email exists, a reset link has been sent"
         });
     }
 
     const resetToken = crypto.randomBytes(32).toString("hex");
 
     user.resetPasswordToken = crypto
-    .createHash("sha256")
-    .update(resetToken)
-    .digest("hex");
+        .createHash("sha256")
+        .update(resetToken)
+        .digest("hex");
 
     user.resetPasswordExpires = Date.now() + 10 * 60 * 1000;
     await user.save({ validateBeforeSave: false });
 
-    const resetUrl =
-        `http://localhost:5000/api/auth/resetPassword/${resetToken}`;
+    // اللينك بيفتح صفحة في الفرونت، والصفحة دي هي اللي تبعت POST للباك
+    const resetUrl = `${process.env.FRONTEND_URL}/reset-password/${resetToken}`;
 
-    await sendEmail({
-        email: user.email,
-        subject: "Reset Your Password",
-        html: `
-            <h2>Password Reset</h2>
+    try {
+        await sendEmail({
+            email: user.email,
+            subject: "Reset Your Password",
+            html: `
+                <h2>Password Reset</h2>
+                <p>You requested to reset your password.</p>
+                <a href="${resetUrl}">Reset Password</a>
+                <p>This link will expire in 10 minutes.</p>
+            `
+        });
+    } catch (error) {
+        // لو الإيميل فشل نمسح الـ token اللي اتحفظ
+        user.resetPasswordToken = undefined;
+        user.resetPasswordExpires = undefined;
+        await user.save({ validateBeforeSave: false });
 
-            <p>
-                You requested to reset your password.
-            </p>
+        return res.status(500).json({
+            success: false,
+            message: "Could not send reset email, please try again"
+        });
+    }
 
-            <a href="${resetUrl}">
-                Reset Password
-            </a>
-
-            <p>
-                This link will expire in 10 minutes.
-            </p>
-        `
-    });
-     return res.status(200).json({
+    return res.status(200).json({
         success: true,
-        message: "Password reset link sent to your email"
+        message: "If this email exists, a reset link has been sent"
     });
 });
 
@@ -183,10 +190,10 @@ const resetPassword = asyncHandler(async (req, res) => {
     const { token } = req.params;
     const { password } = req.body;
 
-    if (!password) {
+    if (!password || password.length < 8) {
         return res.status(400).json({
             success: false,
-            message: "Password is required"
+            message: "Password must be at least 8 characters"
         });
     }
 
@@ -272,10 +279,68 @@ const verifyEmail = asyncHandler(async (req, res) => {
     });
 });
 
+// دالة مشتركة بتعمل حساب موظف بالدور اللي تحدده
+const createStaffAccount = (role) =>
+    asyncHandler(async (req, res) => {
+        const { name, email, password, phoneNumber } = req.body;
+
+        if (!name || !email || !password) {
+            return res.status(400).json({
+                success: false,
+                message: "Name, email and password are required"
+            });
+        }
+
+        if (password.length < 8) {
+            return res.status(400).json({
+                success: false,
+                message: "Password must be at least 8 characters"
+            });
+        }
+
+        const existingUser = await User.findOne({
+            $or: [{ email }, ...(phoneNumber ? [{ phoneNumber }] : [])]
+        });
+
+        if (existingUser) {
+            return res.status(400).json({
+                success: false,
+                message: "User with this email or phone number already exists"
+            });
+        }
+
+        // create (مش insertMany) عشان الـ pre-save hook يعمل hash للباسورد
+        const user = await User.create({
+            name,
+            email,
+            password,
+            phoneNumber,
+            role,
+            isVerified: true // الأدمن هو اللي بيعمل الحساب، فمش محتاج OTP
+        });
+
+        return res.status(201).json({
+            success: true,
+            message: `${role} created successfully`,
+            data: {
+                id: user._id,
+                name: user.name,
+                email: user.email,
+                phoneNumber: user.phoneNumber,
+                role: user.role
+            }
+        });
+    });
+
+const createaccountant = createStaffAccount("accountant");
+const createwarehouse = createStaffAccount("warehouse");
+
 module.exports = {
     register,
     login,
     forgetPassword,
     resetPassword,
-    verifyEmail
+    verifyEmail,
+    createaccountant,
+    createwarehouse
 }
