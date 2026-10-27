@@ -4,7 +4,7 @@ const router = express.Router();
 
 const {
     createCategory,
-    getCategories,
+    getAllCategories,
     getCategoryBySlug,
     updateCategory,
     deleteCategory
@@ -15,7 +15,7 @@ const { isAdmin } = require("../middlewares/isAdmin");
 const { upload } = require("../middlewares/upload");
 
 // عام
-router.get("/", getCategories);
+router.get("/", getAllCategories);
 router.get("/:slug", getCategoryBySlug);
 
 // أدمن بس

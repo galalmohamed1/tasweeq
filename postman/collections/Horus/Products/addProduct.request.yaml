@@ -1,0 +1,43 @@
+$kind: http-request
+url: http://localhost:5000/api/products
+method: POST
+body:
+  type: json
+  content: "{\r
+
+    \  \"title\": \"Cotton T-Shirt\",\r
+
+    \  \"description\": \"تيشيرت قطن 100%\",\r
+
+    \  \"price\": 300,\r
+
+    \  \"discountPrice\": 250,\r
+
+    \  \"stock\": 20,\r
+
+    \  \"sizes\": [\"M\", \"L\", \"XL\"],\r
+
+    \  \"colors\": [\"أسود\", \"أبيض\"],\r
+
+    \  \"category\": \"<categoryId>\",\r
+
+    \  \"subCategory\": \"<subCategoryId>\",\r
+
+    \  \"isFeatured\": true,\r
+
+    \  \"isActive\": true,\r
+
+    \  \"images\": [\r
+
+    \    { \"url\": \"https://example.com/1.jpg\" },\r
+
+    \    { \"url\": \"https://example.com/2.jpg\" }\r
+
+    \  ],\r
+
+    \  \"videos\": [\"https://example.com/video1.mp4\"]\r
+
+    }\r\n"
+auth:
+  type: bearer
+order: 3000

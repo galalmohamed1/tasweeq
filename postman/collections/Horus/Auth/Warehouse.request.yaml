@@ -1,0 +1,19 @@
+$kind: http-request
+url: http://localhost:5000/api/auth/warehouse
+method: POST
+body:
+  type: json
+  content: "{\r
+
+    \  \"name\": \"Mohamed Warehouse\",\r
+
+    \  \"email\": \"warehouse@example.com\",\r
+
+    \  \"password\": \"StrongPass123\",\r
+
+    \  \"phoneNumber\": \"01000000002\"\r
+
+    }"
+auth:
+  type: bearer
+order: 7000

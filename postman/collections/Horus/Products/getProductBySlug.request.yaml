@@ -1,0 +1,6 @@
+$kind: http-request
+url: http://localhost:5000/api/products/:slug
+method: GET
+pathVariables:
+  slug: ""
+order: 2000

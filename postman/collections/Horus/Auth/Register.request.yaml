@@ -1,0 +1,17 @@
+$kind: http-request
+url: http://localhost:5000/api/auth/register
+method: POST
+body:
+  type: json
+  content: "{\r
+
+    \  \"name\": \"Galal Mohamed\",\r
+
+    \  \"email\": \"galal@gmail.com\",\r
+
+    \  \"password\": \"G@l@l123\",\r
+
+    \  \"phoneNumber\": \"01000000000\"\r
+
+    }"
+order: 1000

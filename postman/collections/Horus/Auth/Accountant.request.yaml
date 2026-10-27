@@ -1,0 +1,19 @@
+$kind: http-request
+url: http://localhost:5000/api/auth/accountant
+method: POST
+body:
+  type: json
+  content: "{\r
+
+    \  \"name\": \"Ahmed Accountant\",\r
+
+    \  \"email\": \"accountant@example.com\",\r
+
+    \  \"password\": \"StrongPass123\",\r
+
+    \  \"phoneNumber\": \"01000000001\"\r
+
+    }"
+auth:
+  type: bearer
+order: 6000

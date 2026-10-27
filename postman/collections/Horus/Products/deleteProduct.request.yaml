@@ -1,0 +1,8 @@
+$kind: http-request
+url: http://localhost:5000/api/products/:id
+method: DELETE
+pathVariables:
+  id: ""
+auth:
+  type: bearer
+order: 5000
