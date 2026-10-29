@@ -1,27 +1,59 @@
 const express = require("express");
 const router = express.Router();
+
 const {
-    createOrder,
-    getMyOrders,
-    getAllOrders,
-    getOrderById,
-    updateOrderStatus,
+  createOrder,
+  getMyOrders,
+  getAllOrders,
+  getOrderById,
+  updateOrderStatus,
+  addOrderNote,
+  markOrderPaid,
 } = require("../controllers/order.controller");
 
 const { protect } = require("../middlewares/auth");
 const { authorizeRoles } = require("../middlewares/authorizeRoles");
 
-// // أي يوزر مسجل دخول
-router.post("/", protect, createOrder);
-router.get("/my-orders", protect, getMyOrders);
-// لازم بعد /my عشان "my" ميتفهمش كـ id
-router.get("/:id", protect, getOrderById); // الصلاحية بتتفحص جوه الـ controller
+router.post(
+  "/",
+  protect,
+  authorizeRoles("user", "sales", "salesManager", "admin"),
+  createOrder,
+);
+router.get("/my", protect, getMyOrders); // لازم قبل /:id
+router.get(
+  "/",
+  protect,
+  authorizeRoles("admin", "salesManager", "accountant", "warehouse", "sales"),
+  getAllOrders,
+);
+router.get("/:id", protect, getOrderById);
 
-// الموظفين فقط
-router.get("/", protect, authorizeRoles("admin", "accountant", "warehouse"), getAllOrders);
-
-
-// الصلاحية حسب الحالة بتتفحص جوه الـ controller (user / accountant / warehouse / admin)
-router.patch("/:id/status", protect, updateOrderStatus);
+// اليوزر لازم يكون مسموح له هنا عشان الإلغاء، والـ controller بيفرّق بين الأدوار
+router.patch(
+  "/:id/status",
+  protect,
+  authorizeRoles(
+    "user",
+    "sales",
+    "salesManager",
+    "admin",
+    "warehouse",
+    "accountant",
+  ),
+  updateOrderStatus,
+);
+router.post(
+  "/:id/notes",
+  protect,
+  authorizeRoles("sales", "salesManager", "admin", "warehouse", "accountant"),
+  addOrderNote,
+);
+router.patch(
+  "/:id/payment",
+  protect,
+  authorizeRoles("accountant", "salesManager", "admin"),
+  markOrderPaid,
+);
 
 module.exports = router;

@@ -12,7 +12,7 @@ const {
 
 // غيّر المسار والأسماء دي حسب الـ middleware اللي عندك
 const { protect} = require("../middlewares/auth");
-const { isAdmin }= require("../middlewares/isAdmin");
+const {authorizeRoles}= require("../middlewares/authorizeRoles");
 const { uploadProductMedia } = require("../middlewares/upload");
 
 // Public
@@ -20,8 +20,8 @@ router.get("/", getProducts);
 router.get("/:slug", getProductBySlug);
 
 // Admin only
-router.post("/", protect, isAdmin, uploadProductMedia, createProduct);
-router.put("/:id", protect, isAdmin, uploadProductMedia, updateProduct);
-router.delete("/:id", protect, isAdmin, deleteProduct);
+router.post("/", protect, authorizeRoles("admin", "salesManager"), uploadProductMedia, createProduct);
+router.put("/:id", protect, authorizeRoles("admin", "salesManager"), uploadProductMedia, updateProduct);
+router.delete("/:id", protect, authorizeRoles("admin", "salesManager"), deleteProduct);
 
 module.exports = router;

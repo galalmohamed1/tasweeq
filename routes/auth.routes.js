@@ -7,7 +7,9 @@ const {
     resetPassword,
     verifyEmail,
     createaccountant,
-    createwarehouse
+    createwarehouse,
+    createsales,
+    createsalesManager
 } = require('../controllers/auth.controller');
 
 const {protect} = require('../middlewares/auth');
@@ -22,5 +24,7 @@ router.post("/verify-email", verifyEmail);
 // أدمن بس
 router.post("/accountant", protect, isAdmin, createaccountant);
 router.post("/warehouse", protect, isAdmin, createwarehouse);
+router.post("/sales", protect, isAdmin, createsales);
+router.post("/salesManager", protect, isAdmin, createsalesManager);
 
 module.exports = router;

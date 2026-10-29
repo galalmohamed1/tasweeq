@@ -11,7 +11,7 @@ const {
 } = require("../controllers/category.controller");
 
 const { protect } = require("../middlewares/auth");
-const { isAdmin } = require("../middlewares/isAdmin");
+const { authorizeRoles } = require("../middlewares/authorizeRoles");
 const { upload } = require("../middlewares/upload");
 
 // عام
@@ -19,8 +19,8 @@ router.get("/", getAllCategories);
 router.get("/:slug", getCategoryBySlug);
 
 // أدمن بس
-router.post("/", protect, isAdmin, upload.single("uploads"), createCategory);
-router.put("/:id", protect, isAdmin, upload.single("uploads"), updateCategory);
-router.delete("/:id", protect, isAdmin, deleteCategory);
+router.post("/", protect, authorizeRoles("admin", "salesManager"), upload.single("uploads"), createCategory);
+router.put("/:id", protect, authorizeRoles("admin", "salesManager"), upload.single("uploads"), updateCategory);
+router.delete("/:id", protect, authorizeRoles("admin", "salesManager"), deleteCategory);
 
 module.exports = router;

@@ -3,13 +3,13 @@ const router = express.Router();
 
 const { createContactMessage, deleteContactMessage, getAllContactMessages, getContactMessageById, markAsRead } = require('../controllers/contact.controller')
 const { protect } = require('../middlewares/auth')
-const { isAdmin } = require('../middlewares/isAdmin')
+const { authorizeRoles } = require("../middlewares/authorizeRoles");
 
 router.post("/", createContactMessage);
 
-router.get("/", protect, isAdmin, getAllContactMessages);
-router.get("/:id", protect, isAdmin, getContactMessageById);
-router.put("/:id/read", protect, isAdmin, markAsRead);
-router.delete("/:id", protect, isAdmin, deleteContactMessage);
+router.get("/", protect, authorizeRoles("admin", "salesManager"), getAllContactMessages);
+router.get("/:id", protect, authorizeRoles("admin", "salesManager"), getContactMessageById);
+router.put("/:id/read", protect, authorizeRoles("admin", "salesManager"), markAsRead);
+router.delete("/:id", protect, authorizeRoles("admin", "salesManager"), deleteContactMessage);
 
 module.exports = router;

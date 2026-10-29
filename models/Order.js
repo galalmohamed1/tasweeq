@@ -1,73 +1,96 @@
 const mongoose = require("mongoose");
 
-const OrderItemSchema = new mongoose.Schema(
-    {
-        product: { type: mongoose.Schema.Types.ObjectId, ref: "Product", required: true },
-        title: { type: String, required: true },
-        image: { type: String },
-        quantity: { type: Number, required: true, min: 1 },
-        price: { type: Number, required: true, min: 0 },
-        size: { type: String, trim: true },
-        color: { type: String, trim: true }
+const ORDER_STATUSES = [
+  "pending",
+  "preparing",
+  "shipped",
+  "delivered",
+  "refused",
+  "cancelled",
+];
+
+const orderItemSchema = new mongoose.Schema(
+  {
+    product: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Product",
+      required: true,
     },
-    { _id: false }
+    title: { type: String, required: true }, // نسخة وقت الحجز
+    image: { type: String },
+    price: { type: Number, required: true, min: 0 }, // السعر وقت الحجز
+    quantity: { type: Number, required: true, min: 1 },
+    size: { type: String },
+    color: { type: String },
+  },
+  { _id: false },
+);
+
+const noteSchema = new mongoose.Schema(
+  {
+    text: { type: String, required: true, trim: true, maxlength: 500 },
+    by: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
+    role: { type: String, required: true },
+  },
+  { timestamps: { createdAt: true, updatedAt: false } },
+);
+
+const historySchema = new mongoose.Schema(
+  {
+    status: { type: String, enum: ORDER_STATUSES, required: true },
+    by: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+    role: { type: String },
+    at: { type: Date, default: Date.now },
+  },
+  { _id: false },
 );
 
 const OrderSchema = new mongoose.Schema(
-    {
-        orderNumber: { type: String, unique: true },
-        user: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
-        items: {
-            type: [OrderItemSchema],
-            validate: {
-                validator: (v) => v.length > 0,
-                message: "Order must have at least one item"
-            }
-        },
-        shippingAddress: {
-            fullName:    { type: String, required: true, trim: true },
-            phoneNumber: { type: String, required: true, trim: true },
-            country:     { type: String, required: true, default: "Egypt" },
-            governorate: { type: String, required: true },
-            city:        { type: String, required: true },
-            area:        { type: String },
-            street:      { type: String, required: true },
-            building:    { type: String },
-            apartment:   { type: String },
-            postalCode:  { type: String },
-            notes:       { type: String }
-        },
-        paymentMethod: {
-            type: String,
-            enum: ["CashOnDelivery", "CreditCard"],
-            default: "CashOnDelivery"
-        },
-        isPaid: { type: Boolean, default: false },
-        paidAt: { type: Date },
-        totalPrice: { type: Number, required: true, min: 0 },
-        shippingFee: { type: Number, default: 0, min: 0 },
-        discountAmount: { type: Number, default: 0, min: 0 },
-        couponCode: { type: String, trim: true, uppercase: true },
-        finalPrice: { type: Number, required: true, min: 0 },
-        orderStatus: {
-            type: String,
-            enum: ["Pending", "Paid", "Preparing", "Shipped", "Delivered", "Cancelled"],
-            default: "Pending"
-        },
-        statusHistory: [
-            {
-                status: String,
-                changedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
-                changedAt: { type: Date, default: Date.now },
-                _id: false
-            }
-        ],
-        isDeleted: { type: Boolean, default: false }
+  {
+    // صاحب الأوردر (فاضي لو الموظف حجز لعميل مش مسجّل)
+    user: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+    createdBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      required: true,
     },
-    { timestamps: true }
+    source: { type: String, enum: ["website", "sales"], default: "website" },
+
+    customer: {
+      name: { type: String, required: true, trim: true },
+      phone: { type: String, required: true, trim: true },
+      address: { type: String, required: true, trim: true },
+      city: { type: String, trim: true },
+    },
+
+    items: {
+      type: [orderItemSchema],
+      validate: {
+        validator: (items) => items.length > 0,
+        message: "Order must have at least one item",
+      },
+    },
+
+    totalPrice: { type: Number, required: true, min: 0 },
+
+    status: { type: String, enum: ORDER_STATUSES, default: "pending" },
+
+    isPaid: { type: Boolean, default: false },
+    paidAt: { type: Date },
+
+    shipping: {
+      company: { type: String, trim: true },
+      courierName: { type: String, trim: true },
+      shippedAt: { type: Date },
+    },
+
+    notes: [noteSchema],
+    statusHistory: [historySchema],
+  },
+  { timestamps: true },
 );
 
 OrderSchema.index({ user: 1, createdAt: -1 });
-OrderSchema.index({ orderStatus: 1, createdAt: -1 });
+OrderSchema.index({ status: 1, createdAt: -1 });
 
 module.exports = mongoose.model("Order", OrderSchema);

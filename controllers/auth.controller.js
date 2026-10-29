@@ -10,7 +10,7 @@ const sendEmail = require('../utils/sendEmail');
 const register = asyncHandler(async (req, res) => {
     const { name, email, password, phoneNumber } = req.body;
 
-    if(!name || !email || !password) {
+    if( !email || !password) {
         return res.status(400).json({
             success: false,
             message: 'Please provide name, email, and password are required'
@@ -334,6 +334,8 @@ const createStaffAccount = (role) =>
 
 const createaccountant = createStaffAccount("accountant");
 const createwarehouse = createStaffAccount("warehouse");
+const createsales = createStaffAccount("sales");
+const createsalesManager = createStaffAccount("salesManager");
 
 module.exports = {
     register,
@@ -342,5 +344,7 @@ module.exports = {
     resetPassword,
     verifyEmail,
     createaccountant,
-    createwarehouse
+    createwarehouse,
+    createsales,
+    createsalesManager
 }

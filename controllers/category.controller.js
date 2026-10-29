@@ -29,7 +29,7 @@ const createCategory = asyncHandler(async (req, res) => {
     }
 
     const cleanTitle = title.trim();
-    const slug = slugify(cleanTitle);
+    const slug = slugify(cleanTitle) || `category-${Date.now()}`;
 
     const existingCategory = await Category.findOne({
         $or: [{ title: cleanTitle }, { slug }],
@@ -125,7 +125,7 @@ const updateCategory = asyncHandler(async (req, res) => {
 
     if (title !== undefined) {
         const cleanTitle = title.trim();
-        const slug = slugify(cleanTitle);
+        const slug = slugify(cleanTitle) || `category-${Date.now()}`;
 
         // نتأكد إن مفيش category تانية بنفس الاسم
         const duplicate = await Category.findOne({
