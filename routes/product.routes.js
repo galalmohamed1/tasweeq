@@ -13,7 +13,7 @@ const {
 // غيّر المسار والأسماء دي حسب الـ middleware اللي عندك
 const { protect} = require("../middlewares/auth");
 const {authorizeRoles}= require("../middlewares/authorizeRoles");
-const { upload } = require("../middlewares/upload");
+const upload  = require("../middlewares/upload");
 
 // Public
 router.get("/", getProducts);

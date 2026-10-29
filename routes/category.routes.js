@@ -12,7 +12,7 @@ const {
 
 const { protect } = require("../middlewares/auth");
 const { authorizeRoles } = require("../middlewares/authorizeRoles");
-const { upload } = require("../middlewares/upload");
+const upload  = require("../middlewares/upload");
 
 // عام
 router.get("/", getAllCategories);
