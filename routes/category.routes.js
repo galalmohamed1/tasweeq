@@ -19,8 +19,8 @@ router.get("/", getAllCategories);
 router.get("/:slug", getCategoryBySlug);
 
 // أدمن بس
-router.post("/", protect, authorizeRoles("admin", "salesManager"), upload.single("uploads"), createCategory);
-router.put("/:id", protect, authorizeRoles("admin", "salesManager"), upload.single("uploads"), updateCategory);
+router.post("/", protect, authorizeRoles("admin", "salesManager"), upload.single("image"), createCategory);
+router.put("/:id", protect, authorizeRoles("admin", "salesManager"), upload.single("image"), updateCategory);
 router.delete("/:id", protect, authorizeRoles("admin", "salesManager"), deleteCategory);
 
 module.exports = router;

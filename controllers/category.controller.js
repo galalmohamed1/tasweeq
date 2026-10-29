@@ -1,19 +1,20 @@
-const fs = require("fs");
-const path = require("path");
 const asyncHandler = require("../middlewares/asyncHandler");
 const Category = require("../models/Category");
 const SubCategory = require("../models/SubCategory");
 const slugify = require("../utils/slugify");
+const cloudinary = require("../config/cloudinary");
+const uploadToCloudinary = require("../utils/uploadToCloudinary");
 
-// شكل الصورة المطابق للـ imageSchema
-const buildImage = (file) => ({
-    public_id: file.filename,
-    secure_url: `/uploads/${file.filename}`
-});
+// يرفع الصورة لـ Cloudinary ويرجّع { public_id, secure_url } المطابق للـ imageSchema
+const uploadCategoryImage = (file) =>
+    uploadToCloudinary(file.buffer, "ecommerce/categories");
 
-const removeFile = (filename) => {
-    if (!filename) return;
-    fs.unlink(path.join("uploads", filename), () => {});
+// مسح صورة من Cloudinary (مبيرميش error لو مش موجودة)
+const deleteFile = async (publicId) => {
+    if (!publicId) return;
+    try {
+        await cloudinary.uploader.destroy(publicId);
+    } catch (_) {}
 };
 
 // ==================== Create Category ====================
@@ -21,7 +22,6 @@ const removeFile = (filename) => {
 const createCategory = asyncHandler(async (req, res) => {
     const { title, description } = req.body;
     if (!title || !description || !req.file) {
-        if (req.file) removeFile(req.file.filename);
         return res.status(400).json({
             success: false,
             message: "Category title, description and image are required"
@@ -37,19 +37,21 @@ const createCategory = asyncHandler(async (req, res) => {
     });
 
     if (existingCategory) {
-        removeFile(req.file.filename);
         return res.status(400).json({
             success: false,
             message: "Category already exists"
         });
     }
 
+    // نرفع الصورة بعد ما كل الفحوصات تعدّي
+    const image = await uploadCategoryImage(req.file);
+
     try {
         const category = await Category.create({
             title: cleanTitle,
             slug,
             description,
-            image: buildImage(req.file)
+            image
         });
 
         return res.status(201).json({
@@ -58,7 +60,7 @@ const createCategory = asyncHandler(async (req, res) => {
             data: category
         });
     } catch (error) {
-        removeFile(req.file.filename); // لو فشل الحفظ نمسح الصورة
+        await deleteFile(image.public_id); // لو فشل الحفظ نمسح الصورة
         throw error;
     }
 });
@@ -78,7 +80,7 @@ const getAllCategories = asyncHandler(async (req, res) => {
 // ==================== Get Category By Slug ====================
 
 const getCategoryBySlug = asyncHandler(async (req, res) => {
-    const { slug }= req.params;
+    const { slug } = req.params;
     const category = await Category.findOne({
         slug,
         isDeleted: false
@@ -100,14 +102,13 @@ const getCategoryBySlug = asyncHandler(async (req, res) => {
 // ==================== Update Category ====================
 
 const updateCategory = asyncHandler(async (req, res) => {
-    const { id }= req.params;
+    const { id } = req.params;
     const category = await Category.findOne({
         _id: id,
         isDeleted: false
     });
 
     if (!category) {
-        if (req.file) removeFile(req.file.filename);
         return res.status(404).json({
             success: false,
             message: "Category not found"
@@ -123,43 +124,44 @@ const updateCategory = asyncHandler(async (req, res) => {
         });
     }
 
-    if (title !== undefined) {
-        const cleanTitle = title.trim();
-        const slug = slugify(cleanTitle) || `category-${Date.now()}`;
+    const cleanTitle = title.trim();
+    const slug = slugify(cleanTitle) || `category-${Date.now()}`;
 
-        // نتأكد إن مفيش category تانية بنفس الاسم
-        const duplicate = await Category.findOne({
-            _id: { $ne: category._id },
-            $or: [{ title: cleanTitle }, { slug }],
-            isDeleted: false
+    // نتأكد إن مفيش category تانية بنفس الاسم
+    const duplicate = await Category.findOne({
+        _id: { $ne: category._id },
+        $or: [{ title: cleanTitle }, { slug }],
+        isDeleted: false
+    });
+
+    if (duplicate) {
+        return res.status(400).json({
+            success: false,
+            message: "Category already exists"
         });
-
-        if (duplicate) {
-            if (req.file) removeFile(req.file.filename);
-            return res.status(400).json({
-                success: false,
-                message: "Category already exists"
-            });
-        }
-
-        category.title = cleanTitle;
-        category.slug = slug;
     }
 
+    category.title = cleanTitle;
+    category.slug = slug;
     if (description !== undefined) category.description = description;
 
     const oldImageId = category.image?.public_id;
-    if (req.file) category.image = buildImage(req.file);
+    let newImage = null;
+
+    if (req.file) {
+        newImage = await uploadCategoryImage(req.file);
+        category.image = newImage;
+    }
 
     try {
         await category.save();
     } catch (error) {
-        if (req.file) removeFile(req.file.filename);
+        if (newImage) await deleteFile(newImage.public_id);
         throw error;
     }
 
     // نمسح الصورة القديمة بعد نجاح الحفظ بس
-    if (req.file) removeFile(oldImageId);
+    if (newImage) await deleteFile(oldImageId);
 
     return res.status(200).json({
         success: true,

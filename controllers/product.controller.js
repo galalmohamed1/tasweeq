@@ -2,7 +2,16 @@ const Product = require("../models/Product");
 const SubCategory = require("../models/SubCategory");
 const slugify = require("slugify");
 const DetailsSubCategory = require("../models/detailsSubCategory");
-const fs = require("fs");
+const cloudinary = require("../config/cloudinary");
+const uploadToCloudinary = require("../utils/uploadToCloudinary");
+
+// مسح صورة من Cloudinary (مبيرميش error لو مش موجودة)
+const deleteFile = async (publicId) => {
+  if (!publicId) return;
+  try {
+    await cloudinary.uploader.destroy(publicId);
+  } catch (_) {}
+};
 
 const toArray = (value) => {
   if (value === undefined) return undefined;
@@ -15,16 +24,18 @@ const toArray = (value) => {
   }
 };
 
-// يمسح الملفات اللي اترفعت لو العملية فشلت
-const removeUploadedFiles = (req) => {
-  Object.values(req.files || {})
-    .flat()
-    .forEach((f) => fs.unlink(f.path, () => {}));
-};
+// يرفع مجموعة صور لـ Cloudinary ويرجّع [{ public_id, secure_url }]
+const uploadImages = (files = []) =>
+  Promise.all(
+    files.map((f) => uploadToCloudinary(f.buffer, "ecommerce/products")),
+  );
+
+const removeImages = (images = []) =>
+  Promise.all(images.map((i) => deleteFile(i.public_id)));
 
 exports.createProduct = async (req, res) => {
+  let uploadedImages = [];
   try {
-    // مش بناخد averageRating / numReviews / isDeleted من الـ body
     const {
       title,
       description,
@@ -41,22 +52,17 @@ exports.createProduct = async (req, res) => {
     const sizes = toArray(req.body.sizes);
     const colors = toArray(req.body.colors);
 
-    // الصور والفيديوهات بتيجي من req.files مش من req.body
-    const images = (req.files?.images || []).map((f) => ({
-      public_id: f.filename,
-      secure_url: `/uploads/${f.filename}`,
-    }));
-    const videos = (req.files?.videos || []).map(
-      (f) => `/uploads/${f.filename}`,
-    );
+    const imageFiles = req.files?.images || [];
 
+    // كل الفحوصات الأول، وبعدها نرفع (عشان منرفعش صور ونرميها)
     if (!title) {
-      removeUploadedFiles(req);
       return res.status(400).json({ message: "العنوان مطلوب" });
+    }
+    if (!imageFiles.length) {
+      return res.status(400).json({ message: "صورة واحدة على الأقل مطلوبة" });
     }
     const sub = await SubCategory.findOne({ _id: subCategory, category });
     if (!sub) {
-      removeUploadedFiles(req);
       return res
         .status(400)
         .json({ message: "SubCategory لا تنتمي لهذه الـ Category" });
@@ -68,12 +74,13 @@ exports.createProduct = async (req, res) => {
         isDeleted: false,
       });
       if (!details) {
-        removeUploadedFiles(req);
         return res
           .status(400)
           .json({ message: "Details لا تنتمي لهذه الـ SubCategory" });
       }
     }
+
+    uploadedImages = await uploadImages(imageFiles);
 
     const product = await Product.create({
       title,
@@ -84,8 +91,7 @@ exports.createProduct = async (req, res) => {
       stock,
       sizes,
       colors,
-      images,
-      videos,
+      images: uploadedImages,
       category,
       subCategory,
       isFeatured,
@@ -95,7 +101,7 @@ exports.createProduct = async (req, res) => {
 
     res.status(201).json(product);
   } catch (err) {
-    removeUploadedFiles(req);
+    await removeImages(uploadedImages); // لو فشل الحفظ نمسح الصور من Cloudinary
 
     if (err.code === 11000) {
       return res
@@ -124,17 +130,16 @@ exports.deleteProduct = async (req, res) => {
 };
 
 exports.updateProduct = async (req, res) => {
+  let newImages = [];
   try {
     const product = await Product.findOne({
       _id: req.params.id,
       isDeleted: false,
     });
     if (!product) {
-      removeUploadedFiles(req);
       return res.status(404).json({ message: "المنتج غير موجود" });
     }
 
-    // شلنا images و videos من هنا لأنها بتيجي من req.files
     const allowedFields = [
       "title",
       "description",
@@ -157,22 +162,9 @@ exports.updateProduct = async (req, res) => {
       product.detailsSubCategory = req.body.detailsSubCategory || null;
     }
 
-    // sizes و colors جايين كنص من form-data
     if (req.body.sizes !== undefined) product.sizes = toArray(req.body.sizes);
     if (req.body.colors !== undefined)
       product.colors = toArray(req.body.colors);
-
-    // الملفات الجديدة بتتضاف على القديمة
-    const newImages = (req.files?.images || []).map((f) => ({
-      public_id: f.filename,
-      secure_url: `/uploads/${f.filename}`,
-    }));
-    const newVideos = (req.files?.videos || []).map(
-      (f) => `/uploads/${f.filename}`,
-    );
-
-    if (newImages.length) product.images.push(...newImages);
-    if (newVideos.length) product.videos.push(...newVideos);
 
     // لو الـ category أو الـ subCategory اتغيروا، نتأكد إنهم متطابقين
     if (
@@ -186,7 +178,6 @@ exports.updateProduct = async (req, res) => {
         isDeleted: false,
       });
       if (!sub) {
-        removeUploadedFiles(req);
         return res
           .status(400)
           .json({ message: "SubCategory لا تنتمي لهذه الـ Category" });
@@ -198,7 +189,6 @@ exports.updateProduct = async (req, res) => {
           isDeleted: false,
         });
         if (!details) {
-          removeUploadedFiles(req);
           return res
             .status(400)
             .json({ message: "Details لا تنتمي لهذه الـ SubCategory" });
@@ -206,12 +196,24 @@ exports.updateProduct = async (req, res) => {
       }
     }
 
-    // لو الـ title اتغير، نحدّث الـ slug
     if (req.body.title !== undefined && product.isModified("title")) {
       product.slug = slugify(product.title, { lower: true, strict: true });
     }
 
-    await product.save(); // بيشغّل الـ validators كلها (زي discountPrice)
+    // الصور الجديدة بتستبدل القديمة (زي ما الفرونت بيقول للمستخدم)
+    // لو عاوزها تتضاف على القديمة: استبدل السطر بـ product.images.push(...newImages)
+    const oldImages = [...product.images];
+    const imageFiles = req.files?.images || [];
+
+    if (imageFiles.length) {
+      newImages = await uploadImages(imageFiles);
+      product.images = newImages;
+    }
+
+    await product.save();
+
+    // نمسح الصور القديمة بعد نجاح الحفظ بس
+    if (newImages.length) await removeImages(oldImages);
 
     await product.populate([
       { path: "category", select: "title slug" },
@@ -221,7 +223,7 @@ exports.updateProduct = async (req, res) => {
 
     res.json(product);
   } catch (err) {
-    removeUploadedFiles(req);
+    await removeImages(newImages); // لو فشل الحفظ نمسح الصور الجديدة
 
     if (err.code === 11000) {
       return res
