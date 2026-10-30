@@ -13,6 +13,7 @@ const {
 // غيّر المسار والأسماء دي حسب الـ middleware اللي عندك
 const { protect} = require("../middlewares/auth");
 const {authorizeRoles}= require("../middlewares/authorizeRoles");
+const upload = require("../middlewares/upload");
 const productMedia = upload.fields([{ name: "images", maxCount: 10 }]);
 
 // Public
