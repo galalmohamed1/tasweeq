@@ -1,27 +1,23 @@
 const nodemailer = require("nodemailer");
 
+// بنعمل الـ transporter مرة واحدة بدل ما نعمله مع كل إيميل
+const transporter = nodemailer.createTransport({
+    host: "smtp.gmail.com",
+    port: 465,
+    secure: true,
+    auth: {
+        user: process.env.EMAIL_USER,
+        pass: process.env.EMAIL_PASS
+    }
+});
+
 const sendEmail = async ({ email, subject, html }) => {
-
-    const transporter = nodemailer.createTransport({
-        service: "gmail",
-        auth: {
-            user: process.env.EMAIL_USER,
-            pass: process.env.EMAIL_PASS
-        }
-    });
-
-    await transporter.verify();
-
-    console.log("Email transporter is ready");
-
     await transporter.sendMail({
-        from: `"E-Commerce Store" <${process.env.EMAIL_USER}>`,
+        from: `"Horus Market" <${process.env.EMAIL_USER}>`,
         to: email,
         subject,
         html
     });
-
-    console.log("Email sent successfully");
 };
 
 module.exports = sendEmail;

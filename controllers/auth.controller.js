@@ -10,18 +10,27 @@ const sendEmail = require('../utils/sendEmail');
 const register = asyncHandler(async (req, res) => {
     const { name, email, password, phoneNumber } = req.body;
 
-    if( !email || !password) {
+    if (!name || !email || !password) {
         return res.status(400).json({
             success: false,
-            message: 'Please provide name, email, and password are required'
+            message: 'Name, email and password are required'
         });
     }
 
+    if (password.length < 8) {
+        return res.status(400).json({
+            success: false,
+            message: 'Password must be at least 8 characters'
+        });
+    }
+
+    const normalizedEmail = String(email).toLowerCase().trim();
+
     const existingUser = await User.findOne({
-        $or: [{email}, ...(phoneNumber ? [{phoneNumber}] : [])]
+        $or: [{ email: normalizedEmail }, ...(phoneNumber ? [{ phoneNumber }] : [])]
     });
 
-    if(existingUser) {
+    if (existingUser) {
         return res.status(400).json({
             success: false,
             message: 'User with this email or phone number already exists'
@@ -30,15 +39,15 @@ const register = asyncHandler(async (req, res) => {
 
     // OTP من 6 أرقام (الحد الأعلى 1000000 لأن randomInt مش بيشمله)
     const otp = crypto.randomInt(100000, 1000000).toString();
-    const hashedotp =crypto.createHash('sha256').update(otp).digest('hex');
+    const hashedOTP = crypto.createHash('sha256').update(otp).digest('hex');
 
     const user = await User.create({
         name,
-        email,
+        email: normalizedEmail,
         password,
         phoneNumber,
-        verificationOTP: hashedotp,
-        verficationOTPExpire: Date.now() + 10 * 60 * 1000 // OTP expires in 10 minutes
+        verificationOTP: hashedOTP,
+        verificationOTPExpires: Date.now() + 10 * 60 * 1000 // 10 دقايق
     });
 
     try {
@@ -53,12 +62,15 @@ const register = asyncHandler(async (req, res) => {
             `
         });
     } catch (error) {
+        // لازم نطبع السبب الحقيقي، وإلا مش هتعرف ليه الإيميل فشل
+        console.error("sendEmail failed:", error.message);
         await User.findByIdAndDelete(user._id); // نمسح اليوزر عشان يقدر يسجل تاني
         return res.status(500).json({
             success: false,
             message: "Could not send verification email, please try again"
         });
     }
+
     return res.status(201).json({
         success: true,
         message: "Registration successful. OTP sent to your email."
