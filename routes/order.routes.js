@@ -24,7 +24,14 @@ router.get("/my", protect, getMyOrders); // لازم قبل /:id
 router.get(
   "/",
   protect,
-  authorizeRoles("admin", "salesManager", "accountant", "warehouse", "sales"),
+  authorizeRoles(
+    "admin",
+    "salesManager",
+    "accountant",
+    "warehouse",
+    "sales",
+    "courier",
+  ),
   getAllOrders,
 );
 router.get("/:id", protect, getOrderById);
@@ -40,6 +47,7 @@ router.patch(
     "admin",
     "warehouse",
     "accountant",
+    "courier",
   ),
   updateOrderStatus,
 );

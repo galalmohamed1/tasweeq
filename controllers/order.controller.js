@@ -242,14 +242,23 @@ exports.createOrder = async (req, res) => {
 // ---------------------------------------------------------
 // GET /api/orders/my  (طلباتي)
 // ---------------------------------------------------------
-exports.getMyOrders = async (req, res) => {
+exports.getAllOrders = async (req, res) => {
   try {
-    const { page = 1, limit = 10 } = req.query;
+    const { page = 1, limit = 20, status } = req.query;
     const skip = (Number(page) - 1) * Number(limit);
-    const filter = { user: req.user._id, isDeleted: false };
+
+    const filter = { isDeleted: false };
+    if (status) filter.orderStatus = status;
+    if (req.user.role === "sales") filter["bookedBy.user"] = req.user._id;
+    // المندوب يشوف الأوردرات المشحونة بس
+    if (req.user.role === "courier") filter.orderStatus = "Shipped";
 
     const [orders, total] = await Promise.all([
-      Order.find(filter).sort("-createdAt").skip(skip).limit(Number(limit)),
+      Order.find(filter)
+        .populate("user", "name email phoneNumber")
+        .sort("-createdAt")
+        .skip(skip)
+        .limit(Number(limit)),
       Order.countDocuments(filter),
     ]);
 
@@ -328,8 +337,15 @@ exports.getOrderById = async (req, res) => {
     const isOwner = order.user?._id?.equals(req.user._id);
     const isBooker = order.bookedBy?.user?.equals(req.user._id);
     const canViewAll = VIEW_ALL_ROLES.includes(role);
+    const isCourierOnShipped =
+      role === "courier" && order.orderStatus === "Shipped";
 
-    if (!isOwner && !canViewAll && !(role === "sales" && isBooker)) {
+    if (
+      !isOwner &&
+      !canViewAll &&
+      !(role === "sales" && isBooker) &&
+      !isCourierOnShipped
+    ) {
       return res
         .status(403)
         .json({ success: false, message: "غير مسموح لك بعرض هذا الأوردر" });
@@ -386,17 +402,22 @@ exports.updateOrderStatus = async (req, res) => {
     }
 
     // 3) العميل يلغي أوردره هو بس (والانتقال نفسه مسموح بس من Pending أو Preparing)
-    if (
-      status === "Cancelled" &&
-      role === "user" &&
-      !order.user?.equals(req.user._id)
-    ) {
-      return res
-        .status(403)
-        .json({ success: false, message: "تقدر تلغي أوردراتك بس" });
+    // 3) العميل يلغي أوردره هو بس، وهو قيد الانتظار فقط
+    if (status === "Cancelled" && role === "user") {
+      if (!order.user?.equals(req.user._id)) {
+        return res
+          .status(403)
+          .json({ success: false, message: "تقدر تلغي أوردراتك بس" });
+      }
+      if (order.orderStatus !== "Pending") {
+        return res.status(403).json({
+          success: false,
+          message: "تقدر تلغي الأوردر وهو قيد الانتظار فقط",
+        });
+      }
     }
 
-    // [جديد] السيلز يلغي الأوردرات اللي حجزها هو بس
+    // السيلز يلغي الأوردرات اللي حجزها هو بس
     if (
       status === "Cancelled" &&
       role === "sales" &&
