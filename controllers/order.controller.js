@@ -28,11 +28,10 @@ const TRANSITIONS = {
 
 // مين يقدر يوصّل الأوردر للحالة دي
 const ROLES_BY_TARGET = {
-  Preparing: ["warehouse", "salesManager", "admin"], // تعبئة
-  Shipped: ["warehouse", "salesManager", "admin"], // شحن (شركة أو مندوب)
-  Delivered: ["accountant", "salesManager", "admin"], // اتسلم
-  Refused: ["accountant", "salesManager", "admin"], // العميل رفض الاستلام
-  // [اتعدّل] ضفت "sales" (المبيعات بتلغي اللي حجزته)
+  Preparing: ["warehouse", "salesManager", "admin"],
+  Shipped: ["warehouse", "salesManager", "admin"],
+  Delivered: ["courier", "accountant", "salesManager", "admin"],
+  Refused: ["courier", "accountant", "salesManager", "admin"],
   Cancelled: ["user", "sales", "warehouse", "salesManager", "admin"],
 };
 
