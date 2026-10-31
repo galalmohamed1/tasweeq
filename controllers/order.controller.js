@@ -3,7 +3,7 @@ const Order = require("../models/Order");
 const Product = require("../models/Product");
 const ShippingFee = require("../models/ShippingFee");
 const User = require("../models/user.model");
-
+const Cart = require("../models/Cart");
 // ---------------------------------------------------------
 // الأدوار
 // ---------------------------------------------------------
@@ -87,6 +87,14 @@ const buildShipping = (shipping, userId) => {
 // sales / salesManager / admin: بيحجزوا لعميل، و customerId اختياري
 // body: { items: [{ product, quantity, size, color }], shippingAddress, paymentMethod, customerId? }
 // الصلاحية (user / sales / salesManager / admin) بتتفحص في الـ route
+// ---------------------------------------------------------
+// ---------------------------------------------------------
+// POST /api/orders
+// user: بيحجز لنفسه (items من الـ cart)
+// sales / salesManager / admin: بيحجزوا لعميل، و customerId اختياري
+// body: { items: [{ product, quantity, size, color }], shippingAddress, paymentMethod, customerId? }
+// الصلاحية (user / sales / salesManager / admin) بتتفحص في الـ route
+// بعد نجاح الأوردر: الـ cart بتاعة اللي عمل الأوردر بتتفضّى كلها
 // ---------------------------------------------------------
 exports.createOrder = async (req, res) => {
   const reserved = []; // المنتجات اللي اتخصم منها مخزون (للتراجع لو حصل فشل)
@@ -216,6 +224,14 @@ exports.createOrder = async (req, res) => {
       orderStatus: "Pending",
       statusHistory: [{ status: "Pending", changedBy: req.user._id }],
     });
+
+    // الأوردر اتسجل بنجاح: نفضّي الـ cart بتاعة اللي عمل الأوردر.
+    // لو المسح فشل ما نرميش error، لأن الأوردر اتسجل والمخزون اتخصم خلاص
+    // (الـ catch الرئيسي كان هيرجّع المخزون والأوردر موجود).
+    await Cart.findOneAndUpdate(
+      { user: req.user._id },
+      { $set: { items: [], totalPrice: 0 } },
+    ).catch((err) => console.error("Failed to clear cart:", err.message));
 
     res
       .status(201)
