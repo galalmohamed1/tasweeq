@@ -336,6 +336,7 @@ const createaccountant = createStaffAccount("accountant");
 const createwarehouse = createStaffAccount("warehouse");
 const createsales = createStaffAccount("sales");
 const createsalesManager = createStaffAccount("salesManager");
+const courier = createStaffAccount("courier");
 
 module.exports = {
     register,
@@ -346,5 +347,6 @@ module.exports = {
     createaccountant,
     createwarehouse,
     createsales,
-    createsalesManager
+    createsalesManager,
+    courier
 }
