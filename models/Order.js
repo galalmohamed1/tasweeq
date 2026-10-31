@@ -1,12 +1,12 @@
 const mongoose = require("mongoose");
 
 const ORDER_STATUSES = [
-  "pending",
-  "preparing",
-  "shipped",
-  "delivered",
-  "refused",
-  "cancelled",
+  "Pending",
+  "Preparing",
+  "Shipped",
+  "Delivered",
+  "Refused",
+  "Cancelled",
 ];
 
 const orderItemSchema = new mongoose.Schema(
@@ -26,41 +26,46 @@ const orderItemSchema = new mongoose.Schema(
   { _id: false },
 );
 
-const noteSchema = new mongoose.Schema(
+const shippingAddressSchema = new mongoose.Schema(
   {
-    text: { type: String, required: true, trim: true, maxlength: 500 },
-    by: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
-    role: { type: String, required: true },
+    fullName: { type: String, required: true, trim: true },
+    phoneNumber: { type: String, required: true, trim: true },
+    country: { type: String, trim: true, default: "Egypt" },
+    governorate: { type: String, required: true, trim: true },
+    city: { type: String, required: true, trim: true },
+    street: { type: String, required: true, trim: true },
+    area: { type: String, trim: true },
+    building: { type: String, trim: true },
+    apartment: { type: String, trim: true },
+    postalCode: { type: String, trim: true },
+    notes: { type: String, trim: true },
   },
-  { timestamps: { createdAt: true, updatedAt: false } },
+  { _id: false },
 );
 
-const historySchema = new mongoose.Schema(
+// سجل الحالات + الملاحظات (الملاحظة بتتسجل بنفس حالة الأوردر الحالية)
+const statusHistorySchema = new mongoose.Schema(
   {
     status: { type: String, enum: ORDER_STATUSES, required: true },
-    by: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
-    role: { type: String },
-    at: { type: Date, default: Date.now },
+    changedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+    changedAt: { type: Date, default: Date.now },
+    note: { type: String, trim: true, maxlength: 500 },
   },
   { _id: false },
 );
 
 const OrderSchema = new mongoose.Schema(
   {
-    // صاحب الأوردر (فاضي لو الموظف حجز لعميل مش مسجّل)
-    user: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
-    createdBy: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "User",
-      required: true,
-    },
-    source: { type: String, enum: ["website", "sales"], default: "website" },
+    orderNumber: { type: String, required: true, unique: true },
 
-    customer: {
-      name: { type: String, required: true, trim: true },
-      phone: { type: String, required: true, trim: true },
-      address: { type: String, required: true, trim: true },
-      city: { type: String, trim: true },
+    // صاحب الأوردر (فاضي لو الموظف حجز من غير عميل مسجّل)
+    user: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+
+    // اللي حجز الأوردر (سيلز / مدير مبيعات)
+    bookedBy: {
+      user: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+      name: { type: String },
+      role: { type: String },
     },
 
     items: {
@@ -71,26 +76,43 @@ const OrderSchema = new mongoose.Schema(
       },
     },
 
-    totalPrice: { type: Number, required: true, min: 0 },
+    shippingAddress: { type: shippingAddressSchema, required: true },
 
-    status: { type: String, enum: ORDER_STATUSES, default: "pending" },
+    paymentMethod: {
+      type: String,
+      enum: ["CashOnDelivery", "CreditCard"],
+      required: true,
+    },
+
+    totalPrice: { type: Number, required: true, min: 0 }, // مجموع المنتجات
+    shippingFee: { type: Number, default: 0, min: 0 },
+    discountAmount: { type: Number, default: 0, min: 0 },
+    finalPrice: { type: Number, required: true, min: 0 },
+
+    orderStatus: { type: String, enum: ORDER_STATUSES, default: "Pending" },
+    statusHistory: [statusHistorySchema],
+
+    shipping: {
+      method: { type: String, enum: ["Company", "Courier"] },
+      companyName: { type: String, trim: true },
+      courierName: { type: String, trim: true },
+      courierPhone: { type: String, trim: true },
+      trackingNumber: { type: String, trim: true },
+      shippedAt: { type: Date },
+      shippedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+    },
 
     isPaid: { type: Boolean, default: false },
     paidAt: { type: Date },
+    paidBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
 
-    shipping: {
-      company: { type: String, trim: true },
-      courierName: { type: String, trim: true },
-      shippedAt: { type: Date },
-    },
-
-    notes: [noteSchema],
-    statusHistory: [historySchema],
+    isDeleted: { type: Boolean, default: false },
   },
   { timestamps: true },
 );
 
 OrderSchema.index({ user: 1, createdAt: -1 });
-OrderSchema.index({ status: 1, createdAt: -1 });
+OrderSchema.index({ orderStatus: 1, createdAt: -1 });
+OrderSchema.index({ "bookedBy.user": 1, createdAt: -1 });
 
 module.exports = mongoose.model("Order", OrderSchema);
