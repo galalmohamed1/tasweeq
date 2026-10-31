@@ -20,7 +20,7 @@ router.post(
   authorizeRoles("user", "sales", "salesManager", "admin"),
   createOrder,
 );
-router.get("/my", protect, getMyOrders); // لازم قبل /:id
+router.get("/my", protect, getMyOrders);// لازم قبل /:id
 router.get(
   "/",
   protect,

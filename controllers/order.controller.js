@@ -8,7 +8,6 @@ const User = require("../models/user.model");
 // الأدوار
 // ---------------------------------------------------------
 // بيشوفوا كل الأوردرات
-// [اتعدّل] salesManager → salesManager (نفس الاسم في الـ User model والـ proxy)
 const VIEW_ALL_ROLES = ["admin", "salesManager", "accountant", "warehouse"];
 // اللي اسمهم بيتسجل في bookedBy
 const SALES_ROLES = ["sales", "salesManager"];
@@ -28,10 +27,10 @@ const TRANSITIONS = {
 
 // مين يقدر يوصّل الأوردر للحالة دي
 const ROLES_BY_TARGET = {
-  Preparing: ["warehouse", "salesManager", "admin"],
-  Shipped: ["warehouse", "salesManager", "admin"],
-  Delivered: ["courier", "accountant", "salesManager", "admin"],
-  Refused: ["courier", "accountant", "salesManager", "admin"],
+  Preparing: ["warehouse", "salesManager", "admin"], // تعبئة
+  Shipped: ["warehouse", "salesManager", "admin"], // شحن (شركة أو مندوب)
+  Delivered: ["courier", "accountant", "salesManager", "admin"], // اتسلم
+  Refused: ["courier", "accountant", "salesManager", "admin"], // العميل رفض الاستلام
   Cancelled: ["user", "sales", "warehouse", "salesManager", "admin"],
 };
 
@@ -142,7 +141,7 @@ exports.createOrder = async (req, res) => {
         throw { status: 400, message: "الكمية لازم تكون رقم صحيح أكبر من 0" };
       }
 
-      // [جديد] معرّف منتج غلط كان بيرمي CastError ويرجع 500
+      // معرّف منتج غلط كان بيرمي CastError ويرجع 500
       if (!mongoose.isValidObjectId(item.product)) {
         throw { status: 400, message: "معرّف المنتج غير صالح" };
       }
@@ -156,7 +155,7 @@ exports.createOrder = async (req, res) => {
         throw { status: 404, message: "منتج غير متاح أو غير موجود" };
       }
 
-      // [اتعدّل] المقاس واللون مطلوبين لو المنتج ليه مقاسات/ألوان
+      // المقاس واللون مطلوبين لو المنتج ليه مقاسات/ألوان
       // (المنتجات اللي من غير مقاسات أو ألوان مش بتتأثر)
       if (product.sizes.length > 0 && !product.sizes.includes(item.size)) {
         throw {
@@ -192,10 +191,10 @@ exports.createOrder = async (req, res) => {
       orderItems.push({
         product: product._id,
         title: product.title,
-        image: product.images?.[0]?.secure_url, // [اتعدّل] url → secure_url (حسب الـ imageSchema)
+        image: product.images?.[0]?.secure_url, // url → secure_url (حسب الـ imageSchema)
         quantity,
         price: unitPrice,
-        // [اتعدّل] مقاس/لون يتخزنوا بس لو المنتج ليه مقاسات/ألوان
+        // مقاس/لون يتخزنوا بس لو المنتج ليه مقاسات/ألوان
         size: product.sizes.length > 0 ? item.size : undefined,
         color: product.colors.length > 0 ? item.color : undefined,
       });
@@ -242,6 +241,36 @@ exports.createOrder = async (req, res) => {
 // ---------------------------------------------------------
 // GET /api/orders/my  (طلباتي)
 // ---------------------------------------------------------
+exports.getMyOrders = async (req, res) => {
+  try {
+    const { page = 1, limit = 10 } = req.query;
+    const skip = (Number(page) - 1) * Number(limit);
+    const filter = { user: req.user._id, isDeleted: false };
+
+    const [orders, total] = await Promise.all([
+      Order.find(filter).sort("-createdAt").skip(skip).limit(Number(limit)),
+      Order.countDocuments(filter),
+    ]);
+
+    res.json({
+      success: true,
+      data: {
+        orders,
+        total,
+        page: Number(page),
+        pages: Math.ceil(total / Number(limit)),
+      },
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+// ---------------------------------------------------------
+// GET /api/orders  (موظفين فقط) — ?status=Pending&page=1&limit=20
+// السيلز بيشوف الأوردرات اللي حجزها هو بس
+// المندوب بيشوف الأوردرات المشحونة بس
+// ---------------------------------------------------------
 exports.getAllOrders = async (req, res) => {
   try {
     const { page = 1, limit = 20, status } = req.query;
@@ -250,7 +279,7 @@ exports.getAllOrders = async (req, res) => {
     const filter = { isDeleted: false };
     if (status) filter.orderStatus = status;
     if (req.user.role === "sales") filter["bookedBy.user"] = req.user._id;
-    // المندوب يشوف الأوردرات المشحونة بس
+    // المندوب يشوف الأوردرات المشحونة بس (حتى لو بعت status تاني)
     if (req.user.role === "courier") filter.orderStatus = "Shipped";
 
     const [orders, total] = await Promise.all([
@@ -277,47 +306,11 @@ exports.getAllOrders = async (req, res) => {
 };
 
 // ---------------------------------------------------------
-// GET /api/orders  (موظفين فقط) — ?status=Pending&page=1&limit=20
-// السيلز بيشوف الأوردرات اللي حجزها هو بس
-// ---------------------------------------------------------
-exports.getAllOrders = async (req, res) => {
-  try {
-    const { page = 1, limit = 20, status } = req.query;
-    const skip = (Number(page) - 1) * Number(limit);
-
-    const filter = { isDeleted: false };
-    if (status) filter.orderStatus = status;
-    if (req.user.role === "sales") filter["bookedBy.user"] = req.user._id;
-
-    const [orders, total] = await Promise.all([
-      Order.find(filter)
-        .populate("user", "name email phoneNumber")
-        .sort("-createdAt")
-        .skip(skip)
-        .limit(Number(limit)),
-      Order.countDocuments(filter),
-    ]);
-
-    res.json({
-      success: true,
-      data: {
-        orders,
-        total,
-        page: Number(page),
-        pages: Math.ceil(total / Number(limit)),
-      },
-    });
-  } catch (err) {
-    res.status(500).json({ success: false, message: err.message });
-  }
-};
-
-// ---------------------------------------------------------
-// GET /api/orders/:id  (صاحب الأوردر / السيلز اللي حجزه / باقي الموظفين)
+// GET /api/orders/:id  (صاحب الأوردر / السيلز اللي حجزه / باقي الموظفين / المندوب للمشحون)
 // ---------------------------------------------------------
 exports.getOrderById = async (req, res) => {
   try {
-    // [جديد] id غلط الشكل كان بيرجع 500
+    // id غلط الشكل كان بيرجع 500
     if (!mongoose.isValidObjectId(req.params.id)) {
       return res
         .status(400)
@@ -369,7 +362,7 @@ exports.updateOrderStatus = async (req, res) => {
     const { status, shipping, note } = req.body;
     const role = req.user.role;
 
-    // [جديد] تحقق من الحالة والـ id قبل أي حاجة
+    // تحقق من الحالة والـ id قبل أي حاجة
     if (!status) {
       return res.status(400).json({ success: false, message: "الحالة مطلوبة" });
     }
@@ -401,7 +394,6 @@ exports.updateOrderStatus = async (req, res) => {
         .json({ success: false, message: "غير مسموح لك بهذا الإجراء" });
     }
 
-    // 3) العميل يلغي أوردره هو بس (والانتقال نفسه مسموح بس من Pending أو Preparing)
     // 3) العميل يلغي أوردره هو بس، وهو قيد الانتظار فقط
     if (status === "Cancelled" && role === "user") {
       if (!order.user?.equals(req.user._id)) {
@@ -479,7 +471,7 @@ exports.updateOrderStatus = async (req, res) => {
 };
 
 // ---------------------------------------------------------
-// [جديد] POST /api/orders/:id/notes   (ملاحظات المخزن / متابعة المبيعات)
+// POST /api/orders/:id/notes   (ملاحظات المخزن / متابعة المبيعات)
 // body: { text: "العميل مش بيرد" }
 // بتتسجل في statusHistory من غير ما الحالة تتغير
 // السيلز بيضيف ملاحظات على اللي حجزه بس
@@ -541,7 +533,7 @@ exports.addOrderNote = async (req, res) => {
 // ---------------------------------------------------------
 exports.markOrderPaid = async (req, res) => {
   try {
-    // [جديد] id غلط الشكل كان بيرجع 500
+    // id غلط الشكل كان بيرجع 500
     if (!mongoose.isValidObjectId(req.params.id)) {
       return res
         .status(400)
