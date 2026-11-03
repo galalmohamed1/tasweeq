@@ -47,6 +47,24 @@ const UserSchema = new mongoose.Schema(
       ],
       default: "user",
     },
+
+    // المرتب الشهري (بيانات حساسة، مش بترجع غير لو اتطلبت بـ +salary)
+    salary: {
+      type: Number,
+      default: 0,
+      min: [0, "Salary cannot be negative"],
+      select: false,
+    },
+
+    // نسبة العمولة % على المبيعات المسلّمة
+    commissionRate: {
+      type: Number,
+      default: 0,
+      min: [0, "Commission rate cannot be negative"],
+      max: [100, "Commission rate cannot exceed 100"],
+      select: false,
+    },
+
     isVerified: {
       type: Boolean,
       default: false,

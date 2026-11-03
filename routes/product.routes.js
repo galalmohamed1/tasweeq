@@ -1,7 +1,7 @@
 // routes/product.routes.js
 const express = require("express");
 const router = express.Router();
-
+const optionalAuth = require("../middleware/optionalAuth");
 const {
     createProduct,
     getProducts,
@@ -17,8 +17,8 @@ const upload = require("../middlewares/upload");
 const productMedia = upload.fields([{ name: "images", maxCount: 10 }]);
 
 // Public
-router.get("/", getProducts);
-router.get("/:slug", getProductBySlug);
+router.get("/",optionalAuth, getProducts);
+router.get("/:slug", optionalAuth,getProductBySlug);
 
 // Admin only
 router.post("/", protect, authorizeRoles("admin", "salesManager"), productMedia, createProduct);

@@ -25,6 +25,12 @@ router.use("/cart", require("./cart.routes"));
 
 router.use("/orders", require("./order.routes"));
 
+router.use("/reports", require("./report.routes"));
+
+router.use("/treasury", require("./treasury.routes"));
+
+router.use("/staff", require("./staff.routes"));
+
 // router.use("/banner", require("./banner.routes"));
 // router.use("/faqs", require("./faq.routes"));
 // router.use("/testimonials", require("./testimonial.routes"));

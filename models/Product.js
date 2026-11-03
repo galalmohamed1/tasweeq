@@ -42,9 +42,13 @@ const ProductSchema = new mongoose.Schema(
       },
     },
 
+    priceOriginal: {
+      type: Number,
+      min: 0,
+    },
+
     price: {
       type: Number,
-      required: true,
       min: 0,
     },
 
@@ -52,12 +56,28 @@ const ProductSchema = new mongoose.Schema(
       type: Number,
       default: 0,
       min: 0,
-      validate: {
-        validator: function (value) {
-          return value === 0 || value < this.price;
+      validate: [
+        {
+          validator: function (value) {
+            return value === 0 || value < this.price;
+          },
+          message: "سعر الخصم يجب أن يكون أقل من السعر الأصلي",
         },
-        message: "سعر الخصم يجب أن يكون أقل من السعر الأصلي",
-      },
+        {
+          validator: function (value) {
+            if (value === 0 || !this.priceOriginal) return true;
+            return value < this.priceOriginal * 1.25;
+          },
+          message: "السعر بعد الخصم تعدّى 125% من السعر الأصلي",
+        },
+      ],
+    },
+
+    discountPercentage: {
+      type: Number,
+      default: 0,
+      min: 0,
+      max: 100,
     },
 
     stock: {

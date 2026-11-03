@@ -5,6 +5,9 @@ const DetailsSubCategory = require("../models/detailsSubCategory");
 const cloudinary = require("../config/cloudinary");
 const uploadToCloudinary = require("../utils/uploadToCloudinary");
 
+// أقصى حد للسعر بعد الخصم من السعر الأصلي (125%)
+const MAX_DISCOUNT_RATIO = 1.25;
+
 // مسح صورة من Cloudinary (مبيرميش error لو مش موجودة)
 const deleteFile = async (publicId) => {
   if (!publicId) return;
@@ -33,6 +36,60 @@ const uploadImages = (files = []) =>
 const removeImages = (images = []) =>
   Promise.all(images.map((i) => deleteFile(i.public_id)));
 
+// الأدوار اللي مسموح لها تشوف السعر الأصلي (سعر التكلفة)
+const COST_VISIBLE_ROLES = ["admin", "accountant"];
+const originalPriceSelect = (req) =>
+  COST_VISIBLE_ROLES.includes(req.user?.role)
+    ? "+priceOriginal"
+    : "-priceOriginal";
+
+const round2 = (n) => Math.round(n * 100) / 100;
+const isEmpty = (v) => v === undefined || v === null || v === "";
+
+// بتحسب سعر الخصم والنسبة المئوية وتفحص الحدود
+// بترجّع { error } أو { error: null, discountPrice, discountPercentage }
+const resolveDiscount = ({
+  price,
+  priceOriginal,
+  discountPrice,
+  discountPercentage,
+}) => {
+  const p = Number(price);
+  let d = 0;
+  let pct = 0;
+
+  if (!isEmpty(discountPercentage) && Number(discountPercentage) > 0) {
+    // الأساس هو النسبة المئوية
+    pct = Number(discountPercentage);
+    if (Number.isNaN(pct) || pct >= 100) {
+      return { error: "نسبة الخصم يجب أن تكون أكبر من 0 وأقل من 100" };
+    }
+    d = round2(p - (p * pct) / 100);
+  } else if (!isEmpty(discountPrice) && Number(discountPrice) > 0) {
+    // الأساس هو سعر الخصم
+    d = Number(discountPrice);
+    if (Number.isNaN(d)) return { error: "سعر الخصم غير صالح" };
+    if (d >= p) return { error: "سعر الخصم يجب أن يكون أقل من السعر" };
+    pct = round2(((p - d) / p) * 100);
+  }
+
+  if (d > 0) {
+    if (d >= p) return { error: "سعر الخصم يجب أن يكون أقل من السعر" };
+
+    // السعر بعد الخصم ميعدّيش 125% من السعر الأصلي
+    if (!isEmpty(priceOriginal) && !Number.isNaN(Number(priceOriginal))) {
+      const limit = Number(priceOriginal) * MAX_DISCOUNT_RATIO;
+      if (d >= limit) {
+        return {
+          error: `السعر بعد الخصم (${d}) تعدّى الحد المسموح (${limit}) وهو 125% من السعر الأصلي`,
+        };
+      }
+    }
+  }
+
+  return { error: null, discountPrice: d, discountPercentage: pct };
+};
+
 exports.createProduct = async (req, res) => {
   let uploadedImages = [];
   try {
@@ -40,7 +97,9 @@ exports.createProduct = async (req, res) => {
       title,
       description,
       price,
+      priceOriginal,
       discountPrice,
+      discountPercentage,
       stock,
       category,
       subCategory,
@@ -61,6 +120,17 @@ exports.createProduct = async (req, res) => {
     if (!imageFiles.length) {
       return res.status(400).json({ message: "صورة واحدة على الأقل مطلوبة" });
     }
+
+    const pricing = resolveDiscount({
+      price,
+      priceOriginal,
+      discountPrice,
+      discountPercentage,
+    });
+    if (pricing.error) {
+      return res.status(400).json({ message: pricing.error });
+    }
+
     const sub = await SubCategory.findOne({ _id: subCategory, category });
     if (!sub) {
       return res
@@ -87,7 +157,9 @@ exports.createProduct = async (req, res) => {
       slug: slugify(title, { lower: true, strict: true }),
       description,
       price,
-      discountPrice,
+      priceOriginal,
+      discountPrice: pricing.discountPrice,
+      discountPercentage: pricing.discountPercentage,
       stock,
       sizes,
       colors,
@@ -144,7 +216,7 @@ exports.updateProduct = async (req, res) => {
       "title",
       "description",
       "price",
-      "discountPrice",
+      "priceOriginal",
       "stock",
       "category",
       "subCategory",
@@ -157,6 +229,30 @@ exports.updateProduct = async (req, res) => {
         product[field] = req.body[field];
       }
     });
+
+    // ===== الأسعار والخصم =====
+    // الأولوية: النسبة المبعوتة ← سعر الخصم المبعوت ← نفس الخصم القديم (لو السعر اتغير)
+    let discountInput;
+    if (req.body.discountPercentage !== undefined) {
+      discountInput = { discountPercentage: req.body.discountPercentage };
+    } else if (req.body.discountPrice !== undefined) {
+      discountInput = { discountPrice: req.body.discountPrice };
+    } else if (product.discountPercentage > 0) {
+      discountInput = { discountPercentage: product.discountPercentage };
+    } else {
+      discountInput = { discountPrice: product.discountPrice };
+    }
+
+    const pricing = resolveDiscount({
+      price: product.price,
+      priceOriginal: product.priceOriginal,
+      ...discountInput,
+    });
+    if (pricing.error) {
+      return res.status(400).json({ message: pricing.error });
+    }
+    product.discountPrice = pricing.discountPrice;
+    product.discountPercentage = pricing.discountPercentage;
 
     if (req.body.detailsSubCategory !== undefined) {
       product.detailsSubCategory = req.body.detailsSubCategory || null;
@@ -200,20 +296,40 @@ exports.updateProduct = async (req, res) => {
       product.slug = slugify(product.title, { lower: true, strict: true });
     }
 
-    // الصور الجديدة بتستبدل القديمة (زي ما الفرونت بيقول للمستخدم)
-    // لو عاوزها تتضاف على القديمة: استبدل السطر بـ product.images.push(...newImages)
+    // ===== الصور =====
+    // existingImages: لستة public_id للصور القديمة اللي عايز تحتفظ بيها
+    // images (files): الصور الجديدة اللي هتتضاف
     const oldImages = [...product.images];
     const imageFiles = req.files?.images || [];
+    const keepIds = toArray(req.body.existingImages);
 
-    if (imageFiles.length) {
-      newImages = await uploadImages(imageFiles);
-      product.images = newImages;
+    let imagesToDelete = [];
+
+    if (imageFiles.length || keepIds !== undefined) {
+      // لو existingImages مش مبعوتة، نحتفظ بكل الصور القديمة ونضيف عليها
+      const kept =
+        keepIds === undefined
+          ? oldImages
+          : oldImages.filter((img) => keepIds.includes(img.public_id));
+
+      // لازم يفضل صورة واحدة على الأقل (قبل ما نرفع أي حاجة)
+      if (kept.length + imageFiles.length === 0) {
+        return res
+          .status(400)
+          .json({ message: "صورة واحدة على الأقل مطلوبة" });
+      }
+
+      imagesToDelete = oldImages.filter((img) => !kept.includes(img));
+
+      if (imageFiles.length) newImages = await uploadImages(imageFiles);
+
+      product.images = [...kept.map((img) => img.toObject()), ...newImages];
     }
 
     await product.save();
 
-    // نمسح الصور القديمة بعد نجاح الحفظ بس
-    if (newImages.length) await removeImages(oldImages);
+    // نمسح الصور المحذوفة من Cloudinary بعد نجاح الحفظ بس
+    if (imagesToDelete.length) await removeImages(imagesToDelete);
 
     await product.populate([
       { path: "category", select: "title slug" },
@@ -264,6 +380,7 @@ exports.getProducts = async (req, res) => {
 
     const [products, total] = await Promise.all([
       Product.find(filter)
+        .select(originalPriceSelect(req)) // السعر الأصلي للأدمن والمحاسب بس
         .populate("category", "title slug")
         .populate("subCategory", "name slug")
         .sort(sort)
@@ -290,6 +407,7 @@ exports.getProductBySlug = async (req, res) => {
       isDeleted: false,
       isActive: true,
     })
+      .select(originalPriceSelect(req)) // السعر الأصلي للأدمن والمحاسب بس
       .populate("category", "title slug")
       .populate("subCategory", "name slug")
       .populate("detailsSubCategory", "name slug");
