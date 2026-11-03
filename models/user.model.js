@@ -44,6 +44,7 @@ const UserSchema = new mongoose.Schema(
         "accountant",
         "warehouse",
         "courier",
+        "shippingCompany",
       ],
       default: "user",
     },
