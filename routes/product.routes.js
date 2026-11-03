@@ -1,7 +1,7 @@
 // routes/product.routes.js
 const express = require("express");
 const router = express.Router();
-const optionalAuth = require("../middlewares/optionalAuth");
+const {optionalAuth} = require("../middlewares/optionalAuth");
 const {
     createProduct,
     getProducts,
